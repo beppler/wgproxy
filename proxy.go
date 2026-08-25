@@ -96,13 +96,22 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// should be w.WriteHeader(http.StatusOK), but the connection is hijacked
 	client.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 
-	err = p.copy(dest.(ProxyConn), client.(ProxyConn))
-	if err != nil {
+	errClientToDest, errDestToClient := p.copy(dest.(ProxyConn), client.(ProxyConn))
+	if errClientToDest != nil {
 		p.logger.LogAttrs(
 			r.Context(),
 			slog.LevelError,
-			"error copying request/reponse data",
-			slog.String("error", err.Error()),
+			"error copying client data",
+			slog.String("error", errClientToDest.Error()),
+			slog.String("uri", r.RequestURI),
+		)
+	}
+	if errDestToClient != nil {
+		p.logger.LogAttrs(
+			r.Context(),
+			slog.LevelError,
+			"error copying destination data",
+			slog.String("error", errDestToClient.Error()),
 			slog.String("uri", r.RequestURI),
 		)
 	}
@@ -133,7 +142,7 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 		p.logger.LogAttrs(
 			r.Context(),
 			slog.LevelError,
-			"error copying request/reponse data",
+			"error copying request/response data",
 			slog.String("error", err.Error()),
 			slog.String("uri", r.RequestURI),
 		)
@@ -178,38 +187,30 @@ func (p *Proxy) removeHopHeaders(header http.Header) {
 	}
 }
 
-func (p *Proxy) copy(dst, src ProxyConn) error {
+func (p *Proxy) copy(dest, client ProxyConn) (error, error) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	var errSrcToDest error = nil
+	var errClientToDest error = nil
 	go func() {
-		_, errSrcToDest = io.Copy(src, dst)
-		dst.CloseWrite()
-		src.CloseRead()
+		_, errClientToDest = io.Copy(client, dest)
+		dest.CloseWrite()
+		client.CloseRead()
 		wg.Done()
 	}()
 
-	var errDstToSrc error = nil
+	var errDestToClient error = nil
 	go func() {
-		_, errDstToSrc = io.Copy(dst, src)
-		src.CloseWrite()
-		dst.CloseRead()
+		_, errDestToClient = io.Copy(dest, client)
+		client.CloseWrite()
+		dest.CloseRead()
 		wg.Done()
 	}()
 
 	wg.Wait()
 
-	dst.Close()
-	src.Close()
+	dest.Close()
+	client.Close()
 
-	if errSrcToDest != nil {
-		return errSrcToDest
-	}
-
-	if errDstToSrc != nil {
-		return errDstToSrc
-	}
-
-	return nil
+	return errClientToDest, errDestToClient
 }
