@@ -24,11 +24,11 @@ go run ./cmd/wgproxy
 
 Available flags:
 
-| Flag             | Default     | Description                                |
-| ---------------- | ----------- | ------------------------------------------ |
-| `-address`       | `localhost:1357` | Address to listen on                  |
-| `-configuration` | `wg0.conf`  | Path to the WireGuard configuration file   |
-| `-proxy-pac`     | `proxy.pac` | Path to the `proxy.pac` file               |
+| Flag             | Default          | Description                                |
+| ---------------- | ---------------- | ------------------------------------------ |
+| `-address`       | `localhost:1357` | Address to listen on                       |
+| `-configuration` | `wg0.conf`       | Path to the WireGuard configuration file   |
+| `-proxy-pac`     | `proxy.pac`      | Path to the `proxy.pac` file               |
 
 Example:
 
