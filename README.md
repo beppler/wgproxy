@@ -19,7 +19,12 @@ Each request is tagged with a unique request id ([ULID](https://github.com/oklog
 Run the server:
 
 ```sh
+# to run it from local source
 go run ./cmd/wgproxy
+
+# to run it from GitHub
+go install github.com/beppler/wgproxy/cmd/wgproxy
+wgproxy
 ```
 
 Available flags:
@@ -33,7 +38,7 @@ Available flags:
 Example:
 
 ```sh
-wgproxy -address :1357 -configuration /etc/wireguard/wg0.conf -proxy-pac /etc/wgproxy/proxy.pac
+wgproxy -address localhost:1357 -configuration /etc/wireguard/wg0.conf -proxy-pac /etc/wgproxy/proxy.pac
 ```
 
 The server shuts down gracefully on `SIGINT`/`SIGTERM`.
