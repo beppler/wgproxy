@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"runtime/debug"
 
 	"github.com/beppler/wgproxy"
 	"github.com/beppler/wgproxy/middleware"
@@ -22,7 +23,7 @@ func main() {
 
 	logger := slog.New(middleware.NewRequestIdHandler(slog.Default().Handler()))
 
-	logger.Info("starting proxy", "address", address, "configuration", configurationFile, "proxy-pac", pacFile)
+	logger.Info("starting proxy", "version", version(), "address", address, "configuration", configurationFile, "proxy-pac", pacFile)
 
 	// configure proxy handler, logging and request id middlewares
 	proxy, err := wgproxy.NewProxyFromFile(logger, configurationFile, pacFile)
@@ -40,4 +41,13 @@ func main() {
 	}
 
 	logger.Info("proxy stopped")
+}
+
+// version returns the main module version embedded by the Go toolchain.
+func version() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	return info.Main.Version
 }
