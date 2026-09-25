@@ -16,15 +16,17 @@ Each request is tagged with a unique request id ([ULID](https://github.com/oklog
 
 ## Usage
 
-Run the server:
+Pre-built binaries for Linux, macOS, and Windows are available on the [releases page](https://github.com/beppler/wgproxy/releases). Download the archive for your platform, extract it, and run the `wgproxy` executable.
+
+Alternatively, run the server with Go:
 
 ```sh
+# to run it from GitHub
+go install github.com/beppler/wgproxy/cmd/wgproxy@latest
+wgproxy
+
 # to run it from local source
 go run ./cmd/wgproxy
-
-# to run it from GitHub
-go install github.com/beppler/wgproxy/cmd/wgproxy
-wgproxy
 ```
 
 Available flags:
@@ -54,6 +56,26 @@ This project depends on code from:
 * [httpgrace](https://github.com/enrichman/httpgrace) to manage HTTP server graceful shutdown.
 * [wiredialer](https://github.com/botanica-consulting/wiredialer) to interact with WireGuard protocol.
 * [ulid](https://github.com/oklog/ulid) to generate request ids.
+
+## Release
+
+Releases are published automatically by a [GitHub workflow](.github/workflows/release.yml) whenever a tag starting with `v` is pushed. The workflow builds the archives for every platform with [`build.sh`](build.sh), generates a `SHA256SUMS` file, and uploads them to a GitHub release named after the tag.
+
+The release notes are taken from the tag message, so the tag must be annotated:
+
+```sh
+# opens an editor to write the release notes (Markdown is supported)
+git tag -a v1.0.0
+
+# or provide the release notes inline
+git tag -a v1.0.0 -m "Release notes"
+
+git push origin v1.0.0
+```
+
+Tags containing a hyphen (for example `v1.1.0-rc.1`) are published as pre-releases.
+
+To build the archives locally without releasing, run `bash build.sh`; they are written to the `dist/` directory.
 
 ## License
 
