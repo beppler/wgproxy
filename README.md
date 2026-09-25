@@ -21,7 +21,10 @@ Pre-built binaries for Linux, macOS, and Windows are available on the [releases 
 Alternatively, run the server with Go:
 
 ```sh
-# to run it from GitHub
+# run it from GitHub
+go run github.com/beppler/wgproxy/cmd/wgproxy@latest
+
+# install it from from GitHub
 go install github.com/beppler/wgproxy/cmd/wgproxy@latest
 wgproxy
 
