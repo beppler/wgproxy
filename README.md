@@ -61,14 +61,14 @@ This project depends on code from:
 
 Releases are published automatically by a [GitHub workflow](.github/workflows/release.yml) whenever a tag starting with `v` is pushed. The workflow builds the archives for every platform with [`build.sh`](build.sh), generates a `SHA256SUMS` file, and uploads them to a GitHub release named after the tag.
 
-The release notes are taken from the tag message, so the tag must be annotated:
+The release notes are taken from the tag message, so the tag must be annotated or signed:
 
 ```sh
 # opens an editor to write the release notes (Markdown is supported)
-git tag -a v1.0.0
+git tag -s v1.0.0
 
 # or provide the release notes inline
-git tag -a v1.0.0 -m "Release notes"
+git tag -s v1.0.0 -m "Release notes"
 
 git push origin v1.0.0
 ```
