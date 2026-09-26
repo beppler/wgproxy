@@ -1,6 +1,7 @@
 package wgproxy
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,10 +20,19 @@ type Proxy struct {
 	proxyPac  string
 }
 
-type ProxyConn interface {
+type proxyConn interface {
 	net.Conn
 	CloseRead() error
 	CloseWrite() error
+}
+
+type bufferedConn struct {
+	proxyConn
+	reader *bufio.Reader
+}
+
+func (c *bufferedConn) Read(b []byte) (int, error) {
+	return c.reader.Read(b)
 }
 
 func NewProxyFromFile(logger *slog.Logger, configuration string, proxyPac string) (*Proxy, error) {
@@ -81,7 +91,7 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, _, err := hijacker.Hijack()
+	client, clientBuffer, err := hijacker.Hijack()
 	if err != nil {
 		p.logger.LogAttrs(
 			r.Context(),
@@ -96,7 +106,10 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// should be w.WriteHeader(http.StatusOK), but the connection is hijacked
 	client.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 
-	errClientToDest, errDestToClient := p.copy(dest.(ProxyConn), client.(ProxyConn))
+	errClientToDest, errDestToClient := p.copy(
+		dest.(proxyConn),
+		&bufferedConn{proxyConn: client.(proxyConn), reader: clientBuffer.Reader},
+	)
 	if errClientToDest != nil {
 		p.logger.LogAttrs(
 			r.Context(),
@@ -187,27 +200,21 @@ func (p *Proxy) removeHopHeaders(header http.Header) {
 	}
 }
 
-func (p *Proxy) copy(dest, client ProxyConn) (error, error) {
+func (p *Proxy) copy(dest, client proxyConn) (errClientToDest, errDestToClient error) {
+	pipe := func(dst, src proxyConn) error {
+		_, err := io.Copy(dst, src)
+		dst.CloseWrite() // signal EOF to the peer
+		dst.CloseRead()  // unblock the copy in the opposite direction
+		return err
+	}
+
 	var wg sync.WaitGroup
-
-	var errClientToDest error = nil
-	wg.Go(func() {
-		_, errClientToDest = io.Copy(client, dest)
-		dest.CloseWrite()
-		client.CloseRead()
-	})
-
-	var errDestToClient error = nil
-	wg.Go(func() {
-		_, errDestToClient = io.Copy(dest, client)
-		client.CloseWrite()
-		dest.CloseRead()
-	})
-
+	wg.Go(func() { errClientToDest = pipe(dest, client) })
+	wg.Go(func() { errDestToClient = pipe(client, dest) })
 	wg.Wait()
 
 	dest.Close()
 	client.Close()
 
-	return errClientToDest, errDestToClient
+	return
 }
