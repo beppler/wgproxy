@@ -189,23 +189,22 @@ func (p *Proxy) removeHopHeaders(header http.Header) {
 
 func (p *Proxy) copy(dest, client ProxyConn) (error, error) {
 	var wg sync.WaitGroup
-	wg.Add(2)
 
 	var errClientToDest error = nil
-	go func() {
+	wg.Go(func() {
 		_, errClientToDest = io.Copy(client, dest)
 		dest.CloseWrite()
 		client.CloseRead()
 		wg.Done()
-	}()
+	})
 
 	var errDestToClient error = nil
-	go func() {
+	wg.Go(func() {
 		_, errDestToClient = io.Copy(dest, client)
 		client.CloseWrite()
 		dest.CloseRead()
 		wg.Done()
-	}()
+	})
 
 	wg.Wait()
 
