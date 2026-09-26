@@ -1,6 +1,6 @@
 # wgproxy
 
-wgproxy is a configurable [HTTP/HTTPS](https://en.wikipedia.org/wiki/Proxy_server) proxy server that forwards the outgoing connections through a [WireGuard](https://www.wireguard.com/) tunnel.
+wgproxy is a configurable [HTTP/HTTPS](https://en.wikipedia.org/wiki/Proxy_server) proxy server that forwards the outgoing connections through a [WireGuard](https://www.wireguard.com/) tunnel and provide a host for [Proxy Auto-Configuration](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Proxy_servers_and_tunneling/Proxy_Auto-Configuration_PAC_file) file that simplify the proxy usage.
 
 ## How it works
 
@@ -8,7 +8,7 @@ The proxy handles:
 
 * **CONNECT** requests by opening a TCP tunnel to the destination host through the WireGuard interface.
 * **Absolute URI** requests (plain HTTP proxying) by forwarding them through a transport backed by the WireGuard dialer.
-* A **`/proxy.pac`** endpoint which serves a [Proxy Auto-Config](https://en.wikipedia.org/wiki/Proxy_auto-config) file, so browsers can automatically decide when to use the proxy (local and private network addresses bypass it).
+* A **`/proxy.pac`** endpoint which serves a [Proxy Auto-Configuration](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Proxy_servers_and_tunneling/Proxy_Auto-Configuration_PAC_file) file, so browsers can automatically decide when to use the proxy (local and private network addresses bypass it).
 
 Any other request receives a `405 Method Not Allowed` response.
 
