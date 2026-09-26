@@ -195,7 +195,6 @@ func (p *Proxy) copy(dest, client ProxyConn) (error, error) {
 		_, errClientToDest = io.Copy(client, dest)
 		dest.CloseWrite()
 		client.CloseRead()
-		wg.Done()
 	})
 
 	var errDestToClient error = nil
@@ -203,7 +202,6 @@ func (p *Proxy) copy(dest, client ProxyConn) (error, error) {
 		_, errDestToClient = io.Copy(dest, client)
 		client.CloseWrite()
 		dest.CloseRead()
-		wg.Done()
 	})
 
 	wg.Wait()
