@@ -70,7 +70,7 @@ The race detector needs cgo, so a C compiler must be available. The same checks 
 
 ## Release
 
-Releases are published automatically by a [GitHub workflow](.github/workflows/release.yml) whenever a tag starting with `v` is pushed. The workflow builds the archives for every platform with [`build.sh`](build.sh), generates a `SHA256SUMS` file, and uploads them to a GitHub release named after the tag.
+Releases are published automatically by a [GitHub workflow](.github/workflows/release.yml) whenever a tag starting with `v` is pushed. The workflow builds the archives for every platform and a `SHA256SUMS` file with [GoReleaser](https://goreleaser.com) (see [`.goreleaser.yaml`](.goreleaser.yaml)), and uploads them to a GitHub release named after the tag.
 
 The release notes are taken from the tag message, so the tag must be annotated or signed:
 
@@ -86,7 +86,7 @@ git push origin v1.0.0
 
 Tags containing a hyphen (for example `v1.1.0-rc.1`) are published as pre-releases.
 
-To build the archives locally without releasing, run `bash build.sh`; they are written to the `dist/` directory.
+To build the archives locally without releasing, run `goreleaser release --snapshot --clean`; they are written to the `dist/` directory.
 
 ## License
 

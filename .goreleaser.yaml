@@ -1,0 +1,44 @@
+version: 2
+
+project_name: wgproxy
+
+builds:
+  - main: ./cmd/wgproxy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - "386"
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: "386"
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    files:
+      - src: README.md
+        info:
+          mode: 0644
+      - src: LICENSE
+        info:
+          mode: 0644
+
+checksum:
+  name_template: SHA256SUMS
+
+# The GitHub release is created by the workflow so the notes come from the
+# annotated tag.
+changelog:
+  disable: true
+
+release:
+  disable: true
