@@ -32,6 +32,8 @@ jobs:
 
       - name: Build
         uses: goreleaser/goreleaser-action@v6
+        env:
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
         with:
           distribution: goreleaser
           version: "~> v2"
