@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bufio"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -62,6 +63,9 @@ func (rw *logResponseWriter) WriteHeader(statusCode int) {
 }
 
 func (rw *logResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hijacker := rw.ResponseWriter.(http.Hijacker)
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response writer does not support hijacking")
+	}
 	return hijacker.Hijack()
 }
