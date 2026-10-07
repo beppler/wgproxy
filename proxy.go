@@ -2,6 +2,7 @@ package wgproxy
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,9 +16,13 @@ import (
 
 type Proxy struct {
 	logger    *slog.Logger
-	dialer    *wiredialer.WireDialer
+	dialer    dialer
 	transport *http.Transport
 	proxyPac  string
+}
+
+type dialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 type proxyConn interface {
@@ -41,9 +46,13 @@ func NewProxyFromFile(logger *slog.Logger, configuration string, proxyPac string
 		return nil, fmt.Errorf("error creating wireguard dialer: %w", err)
 	}
 
+	return newProxy(logger, dialer, proxyPac), nil
+}
+
+func newProxy(logger *slog.Logger, d dialer, proxyPac string) *Proxy {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           dialer.DialContext,
+		DialContext:           d.DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
@@ -51,7 +60,7 @@ func NewProxyFromFile(logger *slog.Logger, configuration string, proxyPac string
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	return &Proxy{logger: logger, dialer: dialer, transport: transport, proxyPac: proxyPac}, nil
+	return &Proxy{logger: logger, dialer: d, transport: transport, proxyPac: proxyPac}
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
