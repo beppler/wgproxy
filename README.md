@@ -12,7 +12,7 @@ The proxy handles:
 
 Any other request receives a `405 Method Not Allowed` response.
 
-Each request is tagged with a unique request id ([ULID](https://github.com/oklog/ulid)), included in the structured logs, and every request is logged with its method, URI, remote address, status code, and duration.
+Each request is tagged with a unique request id ([ULID](https://github.com/oklog/ulid)), included in the structured logs, and every request is logged with its method, URI, remote address, status code, and duration. Requests the client abandons before the proxy can answer (for example, it closes the connection while the destination is still being dialed) are logged at info level with status `499` (client closed request) instead of as errors.
 
 ## Usage
 
@@ -59,6 +59,14 @@ This project depends on code from:
 * [httpgrace](https://github.com/enrichman/httpgrace) to manage HTTP server graceful shutdown.
 * [wiredialer](https://github.com/botanica-consulting/wiredialer) to interact with WireGuard protocol.
 * [ulid](https://github.com/oklog/ulid) to generate request ids.
+
+## Running tests
+
+```sh
+go test -race ./...
+```
+
+The race detector needs cgo, so a C compiler must be available. The same checks run on every push to `main` and on pull requests by the [test workflow](.github/workflows/test.yml).
 
 ## Release
 

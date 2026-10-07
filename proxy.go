@@ -2,6 +2,8 @@ package wgproxy
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,9 +17,17 @@ import (
 
 type Proxy struct {
 	logger    *slog.Logger
-	dialer    *wiredialer.WireDialer
+	dialer    dialer
 	transport *http.Transport
 	proxyPac  string
+}
+
+// statusClientClosedRequest is the non-standard status (used by nginx) recorded
+// when the client gives up before the proxy can answer.
+const statusClientClosedRequest = 499
+
+type dialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 type proxyConn interface {
@@ -41,9 +51,13 @@ func NewProxyFromFile(logger *slog.Logger, configuration string, proxyPac string
 		return nil, fmt.Errorf("error creating wireguard dialer: %w", err)
 	}
 
+	return newProxy(logger, dialer, proxyPac), nil
+}
+
+func newProxy(logger *slog.Logger, d dialer, proxyPac string) *Proxy {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           dialer.DialContext,
+		DialContext:           d.DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
@@ -51,7 +65,7 @@ func NewProxyFromFile(logger *slog.Logger, configuration string, proxyPac string
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	return &Proxy{logger: logger, dialer: dialer, transport: transport, proxyPac: proxyPac}, nil
+	return &Proxy{logger: logger, dialer: d, transport: transport, proxyPac: proxyPac}
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +81,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
-	dest, err := p.dialer.DialContext(r.Context(), "tcp", r.Host)
+	conn, err := p.dialer.DialContext(r.Context(), "tcp", r.Host)
+	if p.clientCanceled(w, r, err) {
+		return
+	}
 	if err != nil {
 		p.logger.LogAttrs(
 			r.Context(),
@@ -80,8 +97,22 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dest, ok := conn.(proxyConn)
+	if !ok {
+		conn.Close()
+		p.logger.LogAttrs(
+			r.Context(),
+			slog.LevelError,
+			"destination connection does not support half-close",
+			slog.String("host", r.Host),
+		)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
+		dest.Close()
 		p.logger.LogAttrs(
 			r.Context(),
 			slog.LevelError,
@@ -91,8 +122,9 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, clientBuffer, err := hijacker.Hijack()
+	hijacked, clientBuffer, err := hijacker.Hijack()
 	if err != nil {
+		dest.Close()
 		p.logger.LogAttrs(
 			r.Context(),
 			slog.LevelError,
@@ -103,12 +135,25 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	client, ok := hijacked.(proxyConn)
+	if !ok {
+		// the connection is hijacked, so no HTTP response can be written anymore
+		dest.Close()
+		hijacked.Close()
+		p.logger.LogAttrs(
+			r.Context(),
+			slog.LevelError,
+			"client connection does not support half-close",
+		)
+		return
+	}
+
 	// should be w.WriteHeader(http.StatusOK), but the connection is hijacked
 	client.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 
 	errClientToDest, errDestToClient := p.copy(
-		dest.(proxyConn),
-		&bufferedConn{proxyConn: client.(proxyConn), reader: clientBuffer.Reader},
+		dest,
+		&bufferedConn{proxyConn: client, reader: clientBuffer.Reader},
 	)
 	if errClientToDest != nil {
 		p.logger.LogAttrs(
@@ -134,6 +179,9 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 	p.removeHopHeaders(r.Header)
 
 	response, err := p.transport.RoundTrip(r)
+	if p.clientCanceled(w, r, err) {
+		return
+	}
 	if err != nil {
 		p.logger.LogAttrs(
 			r.Context(),
@@ -160,6 +208,27 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 			slog.String("uri", r.RequestURI),
 		)
 	}
+}
+
+// clientCanceled reports whether err happened because the client gave up on
+// the request (for example, it closed the connection while the proxy was still
+// dialing). That is not a proxy failure, so it is logged at info level and
+// recorded with statusClientClosedRequest; the client is no longer there to
+// read the response.
+func (p *Proxy) clientCanceled(w http.ResponseWriter, r *http.Request, err error) bool {
+	if err == nil || !errors.Is(r.Context().Err(), context.Canceled) {
+		return false
+	}
+
+	p.logger.LogAttrs(
+		r.Context(),
+		slog.LevelInfo,
+		"request canceled by client",
+		slog.String("error", err.Error()),
+		slog.String("uri", r.RequestURI),
+	)
+	w.WriteHeader(statusClientClosedRequest)
+	return true
 }
 
 func (p *Proxy) handleNotAllowed(w http.ResponseWriter, r *http.Request) {
@@ -203,8 +272,13 @@ func (p *Proxy) removeHopHeaders(header http.Header) {
 func (p *Proxy) copy(dest, client proxyConn) (errClientToDest, errDestToClient error) {
 	pipe := func(dst, src proxyConn) error {
 		_, err := io.Copy(dst, src)
-		dst.CloseWrite() // signal EOF to the peer
-		dst.CloseRead()  // unblock the copy in the opposite direction
+		// Signal EOF to the peer but keep reading from it: it may still reply
+		// after seeing EOF. The opposite copy ends when the peer closes its
+		// write side.
+		dst.CloseWrite()
+		if err != nil {
+			dst.CloseRead() // the tunnel is broken, unblock the opposite copy
+		}
 		return err
 	}
 
