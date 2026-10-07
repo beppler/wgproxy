@@ -2,7 +2,9 @@ package wgproxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -330,6 +332,67 @@ func TestConnectDialFailure(t *testing.T) {
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+}
+
+// cancelingDialer waits for the context to be canceled and then fails like the
+// WireGuard netstack dialer, whose error does not wrap context.Canceled.
+type cancelingDialer struct{}
+
+func (cancelingDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	<-ctx.Done()
+	return nil, &net.OpError{Op: "dial", Err: errors.New("operation was canceled")}
+}
+
+// serveCanceled serves r with an already canceled context and returns the
+// response status and the level of each log entry.
+func serveCanceled(t *testing.T, d dialer, r *http.Request) (int, []string) {
+	t.Helper()
+	var buf bytes.Buffer
+	p := newProxy(slog.New(slog.NewJSONHandler(&buf, nil)), d, "")
+
+	ctx, cancel := context.WithCancel(r.Context())
+	cancel()
+	recorder := httptest.NewRecorder()
+	p.ServeHTTP(recorder, r.WithContext(ctx))
+
+	var levels []string
+	decoder := json.NewDecoder(&buf)
+	for decoder.More() {
+		var entry struct{ Level string }
+		if err := decoder.Decode(&entry); err != nil {
+			t.Fatalf("decoding log: %v", err)
+		}
+		levels = append(levels, entry.Level)
+	}
+	return recorder.Code, levels
+}
+
+func TestClientCanceled(t *testing.T) {
+	tests := []struct {
+		name    string
+		dialer  dialer
+		request *http.Request
+	}{
+		{name: "CONNECT", dialer: cancelingDialer{}, request: httptest.NewRequest(http.MethodConnect, "example.com:443", nil)},
+		{name: "forwarding", dialer: cancelingDialer{}, request: httptest.NewRequest(http.MethodGet, "http://example.com/", nil)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, levels := serveCanceled(t, tt.dialer, tt.request)
+			if code != statusClientClosedRequest {
+				t.Errorf("status = %d, want %d", code, statusClientClosedRequest)
+			}
+			if len(levels) == 0 {
+				t.Fatal("nothing was logged")
+			}
+			for _, level := range levels {
+				if level != "INFO" {
+					t.Errorf("log level = %s, want INFO", level)
+				}
+			}
+		})
 	}
 }
 
