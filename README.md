@@ -60,6 +60,14 @@ This project depends on code from:
 * [wiredialer](https://github.com/botanica-consulting/wiredialer) to interact with WireGuard protocol.
 * [ulid](https://github.com/oklog/ulid) to generate request ids.
 
+## Running tests
+
+```sh
+go test -race ./...
+```
+
+The race detector needs cgo, so a C compiler must be available. The same checks run on every push to `main` and on pull requests by the [test workflow](.github/workflows/test.yml).
+
 ## Release
 
 Releases are published automatically by a [GitHub workflow](.github/workflows/release.yml) whenever a tag starting with `v` is pushed. The workflow builds the archives for every platform with [`build.sh`](build.sh), generates a `SHA256SUMS` file, and uploads them to a GitHub release named after the tag.
