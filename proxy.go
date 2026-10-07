@@ -76,7 +76,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
-	dest, err := p.dialer.DialContext(r.Context(), "tcp", r.Host)
+	conn, err := p.dialer.DialContext(r.Context(), "tcp", r.Host)
 	if err != nil {
 		p.logger.LogAttrs(
 			r.Context(),
@@ -89,8 +89,22 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dest, ok := conn.(proxyConn)
+	if !ok {
+		conn.Close()
+		p.logger.LogAttrs(
+			r.Context(),
+			slog.LevelError,
+			"destination connection does not support half-close",
+			slog.String("host", r.Host),
+		)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
+		dest.Close()
 		p.logger.LogAttrs(
 			r.Context(),
 			slog.LevelError,
@@ -100,8 +114,9 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, clientBuffer, err := hijacker.Hijack()
+	hijacked, clientBuffer, err := hijacker.Hijack()
 	if err != nil {
+		dest.Close()
 		p.logger.LogAttrs(
 			r.Context(),
 			slog.LevelError,
@@ -112,12 +127,25 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	client, ok := hijacked.(proxyConn)
+	if !ok {
+		// the connection is hijacked, so no HTTP response can be written anymore
+		dest.Close()
+		hijacked.Close()
+		p.logger.LogAttrs(
+			r.Context(),
+			slog.LevelError,
+			"client connection does not support half-close",
+		)
+		return
+	}
+
 	// should be w.WriteHeader(http.StatusOK), but the connection is hijacked
 	client.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 
 	errClientToDest, errDestToClient := p.copy(
-		dest.(proxyConn),
-		&bufferedConn{proxyConn: client.(proxyConn), reader: clientBuffer.Reader},
+		dest,
+		&bufferedConn{proxyConn: client, reader: clientBuffer.Reader},
 	)
 	if errClientToDest != nil {
 		p.logger.LogAttrs(
@@ -212,8 +240,13 @@ func (p *Proxy) removeHopHeaders(header http.Header) {
 func (p *Proxy) copy(dest, client proxyConn) (errClientToDest, errDestToClient error) {
 	pipe := func(dst, src proxyConn) error {
 		_, err := io.Copy(dst, src)
-		dst.CloseWrite() // signal EOF to the peer
-		dst.CloseRead()  // unblock the copy in the opposite direction
+		// Signal EOF to the peer but keep reading from it: it may still reply
+		// after seeing EOF. The opposite copy ends when the peer closes its
+		// write side.
+		dst.CloseWrite()
+		if err != nil {
+			dst.CloseRead() // the tunnel is broken, unblock the opposite copy
+		}
 		return err
 	}
 
