@@ -16,16 +16,16 @@ Each request is tagged with a unique request id ([ULID](https://github.com/oklog
 
 ## Usage
 
-Pre-built binaries for Linux, macOS, and Windows are available on the [releases page](https://github.com/beppler/wgproxy/releases). Download the archive for your platform, extract it, and run the `wgproxy` executable.
+Pre-built binaries for Linux, macOS, and Windows are available on the [releases page](https://go.beppler.dev.br/wgproxy/releases). Download the archive for your platform, extract it, and run the `wgproxy` executable.
 
 Alternatively, run the server with Go:
 
 ```sh
 # run it from GitHub
-go run github.com/beppler/wgproxy/cmd/wgproxy@latest
+go run go.beppler.dev.br/wgproxy/cmd/wgproxy@latest
 
 # install it from from GitHub
-go install github.com/beppler/wgproxy/cmd/wgproxy@latest
+go install go.beppler.dev.br/wgproxy/cmd/wgproxy@latest
 wgproxy
 
 # to run it from local source
