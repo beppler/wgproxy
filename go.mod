@@ -1,4 +1,4 @@
-module github.com/beppler/wgproxy
+module go.beppler.dev.br/wgproxy
 
 go 1.26.3
 
