@@ -6,9 +6,9 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/beppler/wgproxy"
-	"github.com/beppler/wgproxy/middleware"
 	"github.com/enrichman/httpgrace"
+	"go.beppler.dev.br/wgproxy"
+	"go.beppler.dev.br/wgproxy/middleware"
 )
 
 func main() {
