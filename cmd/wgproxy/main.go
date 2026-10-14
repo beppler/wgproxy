@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/enrichman/httpgrace"
 	"go.beppler.dev.br/wgproxy"
@@ -45,9 +46,30 @@ func main() {
 
 // version returns the main module version embedded by the Go toolchain.
 func version() string {
+	var version string
 	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "unknown"
+	if !ok || info.Main.Version == "(devel)" {
+		return "0.0.0-devel"
 	}
-	return info.Main.Version
+	version = strings.TrimSuffix(info.Main.Version, "+dirty")
+	modified := false
+	revision := ""
+	for _, info := range info.Settings {
+		switch info.Key {
+		case "vcs.revision":
+			revision = info.Value
+			if len(revision) > 7 {
+				revision = revision[:7]
+			}
+		case "vcs.modified":
+			modified = info.Value == "true"
+		}
+	}
+	if modified {
+		version += "-devel"
+		if revision != "" {
+			version += "+" + revision
+		}
+	}
+	return version
 }
